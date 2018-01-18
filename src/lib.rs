@@ -1,30 +1,56 @@
-use hyper::{Get, Post, Put, Delete};
+extern crate hyper;
+extern crate futures;
+
+use std::collections::HashMap;
+use std::fs::{File};
+use std::io;
+use std::io::{BufReader, Read};
+use std::path::PathBuf;
+
+use futures::future::Future;
+use futures::future::ok;
+
+use hyper::{Get, Post, Put, Delete, StatusCode};
 use hyper::server::{Service, NewService, Request, Response};
 use hyper::header::{ContentLength};
 
-use std::collections::HashMap;
 
-use std::io;
-use std::io::{BufReader, Read};
-use std::fs::{File};
-use std::path::PathBuf;
 
 type Callback = fn(Request) -> Box<Future<Item = Response, Error = hyper::Error>>;
 struct Pony {
-    pub gets: HashMap<String, Callback>,
-    pub posts: HashMap<String, Callback>,
-    pub puts: HashMap<String, Callback>,
-    pub deletes: HashMap<String, Callback>,
-    pub static_path: String,
+    gets: HashMap<String, Callback>,
+    posts: HashMap<String, Callback>,
+    puts: HashMap<String, Callback>,
+    deletes: HashMap<String, Callback>,
+    static_path: String,
     static_enabled: bool,
+    not_found_path: String,
+    custom_not_found: bool,
+
 }
 
 impl Pony {
+    fn get(&self, req: Request) -> Box<Future<Item = Response, Error = hyper::Error>> {
+        match self.gets.get(req.path()) {
+            Some(cb) => {
+                cb(req)
+            },
+            None => {
+                if self.static_enabled {
+                    println!("using static and no routes match, checking for fallback");
+                    self.static_file(req.path())
+                } else {
+                    Pony::not_found()
+                }
+            },
+        }
+    }
+    
     fn static_file(&self, path: &str) -> Box<Future<Item = Response, Error = hyper::Error>> {
         let mut incoming = String::from(path);
         if incoming.ends_with('/') {
             incoming += "index.html";
-        } else if !WiredForge::has_know_extention(&incoming) {
+        } else if !Pony::has_know_extention(&incoming) {
             incoming += "/index.html";
         }
         
@@ -39,7 +65,7 @@ impl Pony {
             f
         } else {
             println!("File failed to open");
-            return WiredForge::not_found()
+            return Pony::not_found()
         };
         
         let mut reader = BufReader::new(file);
@@ -54,7 +80,7 @@ impl Pony {
             )
         } else {
             println!("Failed to read file as bytes");
-            WiredForge::not_found()
+            Pony::not_found()
         }
     }
 
@@ -90,19 +116,7 @@ impl Service for Pony {
         println!("{:?}: {:?}", req.method(), req.path());
         match req.method() {
             &Get => {
-                match self.gets.get(req.path()) {
-                    Some(cb) => {
-                        cb(req)
-                    },
-                    None => {
-                        if self.static_enabled {
-                            println!("using static and no routes match, checking for fallback");
-                            self.static_file(req.path())
-                        } else {
-                            WiredForge::not_found()
-                        }
-                    },
-                }
+                self.get(req)
             },
             &Post => {
                 match self.posts.get(req.path()) {
@@ -123,7 +137,7 @@ impl Service for Pony {
                 }
             }
             _ => {
-                WiredForge::not_found()
+                Pony::not_found()
             }
         }
     }
@@ -163,12 +177,16 @@ impl Pony {
             )
         }
     }
-    fn new() -> WiredForge {
-        WiredForge {
+    fn new() -> Pony {
+        Pony {
             gets: HashMap::new(),
             posts: HashMap::new(),
+            puts: HashMap::new(),
+            deletes: HashMap::new(),
             static_path: String::new(),
             static_enabled: false,
+            not_found_path: String::new(),
+            custom_not_found: false,
         }
     }
 }

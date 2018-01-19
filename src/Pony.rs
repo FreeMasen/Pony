@@ -1,33 +1,30 @@
 use std::collections::HashMap;
 use std::fs::{File};
-use std::io;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
 
-use futures::future::Future;
 use futures::future::ok;
 
 use hyper::{Get, Post, Put, Delete, StatusCode, Error};
 use hyper::server::{Service, Request, Response};
 use hyper::header::{ContentLength};
 
+use super::Callback;
 
-
-pub type Callback = fn(Request) -> Box<Future<Item = Response, Error = Error>>;
-struct Pony {
-    gets: HashMap<String, Callback>,
-    posts: HashMap<String, Callback>,
-    puts: HashMap<String, Callback>,
-    deletes: HashMap<String, Callback>,
-    static_path: String,
-    static_enabled: bool,
-    not_found_path: String,
-    custom_not_found: bool,
-    known_files: Vec<&'static str>
+pub struct Pony {
+    pub gets: HashMap<String, Callback>,
+    pub posts: HashMap<String, Callback>,
+    pub puts: HashMap<String, Callback>,
+    pub deletes: HashMap<String, Callback>,
+    pub static_path: String,
+    pub static_enabled: bool,
+    pub not_found_path: String,
+    pub custom_not_found: bool,
+    pub known_files: Vec<String>
 }
 
 impl Pony {
-    fn get(&self, req: Request) -> Box<Future<Item = Response, Error = Error>> {
+    fn get(&self, req: Request) -> super::HyperResult {
         match self.gets.get(req.path()) {
             Some(cb) => {
                 cb(req)
@@ -43,7 +40,7 @@ impl Pony {
         }
     }
     
-    fn static_file(&self, path: &str) -> Box<Future<Item = Response, Error = Error>> {
+    fn static_file(&self, path: &str) -> super::HyperResult {
         let mut incoming = String::from(path);
         if incoming.ends_with('/') {
             incoming += "index.html";
@@ -85,7 +82,7 @@ impl Pony {
         if path.ends_with("/") {
             return false;
         }
-        for ext in self.known_files {
+        for ext in &self.known_files {
             if path.ends_with(ext) {
                 return true;
             }
@@ -98,7 +95,7 @@ impl Service for Pony {
     type Request = Request;
     type Response = Response;
     type Error = Error;
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = super::HyperResult;
 
     fn call(&self, req: Request) -> Self::Future {
         println!("{:?}: {:?}", req.method(), req.path());
@@ -132,9 +129,9 @@ impl Service for Pony {
 }
 
 impl Pony {
-    fn not_found(&self) -> Box<Future<Item = Response, Error = Error>> {
+    fn not_found(&self) -> super::HyperResult {
         if self.custom_not_found {
-            let path = PathBuf::from(self.not_found_path);
+            let path = PathBuf::from(&self.not_found_path);
             let file = if let Ok(f) = File::open(path) {
                 f
             } else {
@@ -160,7 +157,7 @@ impl Pony {
         }
     }
 
-    fn default_not_found() -> Box<Future<Item = Response, Error = Error>> {
+    fn default_not_found() -> super::HyperResult {
         Box::new(
             ok(
                 Response::new()
@@ -168,24 +165,6 @@ impl Pony {
             )
         )
     }
-}
-
-fn default_known_extentions(path: &String) -> Vec<&str> {
-        vec![
-            ".html",
-            ".js",
-            ".css",
-            ".ico",
-            ".jpg",
-            ".png",
-            ".woff2",
-            ".ttf",
-            ".txt",
-            ".xml",
-            ".rss",
-            ".svg",
-            ".txt"
-        ]
 }
 
 #[cfg(test)]

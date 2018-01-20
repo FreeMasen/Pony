@@ -55,6 +55,7 @@ impl PonyBuilder {
             String::from("rss"),
             String::from("svg"),
             String::from("txt"),
+            String::from("gif"),
         ].into_iter())
     }
 

@@ -2,6 +2,8 @@
 name = "pony"
 version = "0.1.0"
 authors = ["FreeMasen"]
+description = "An Express-like wrapper around Hyper"
+license = "MIT"
 
 [dependencies]
 hyper = "^0.11"

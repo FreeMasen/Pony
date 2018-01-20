@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use std::fs::{File};
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use hyper::server::{Service, Request, Response};
 use hyper::header::{ContentLength};
 
 use super::Callback;
-
+///A set of hyper http settings
 pub struct Pony {
     pub gets: HashMap<String, Callback>,
     pub posts: HashMap<String, Callback>,
@@ -20,10 +20,15 @@ pub struct Pony {
     pub static_enabled: bool,
     pub not_found_path: String,
     pub custom_not_found: bool,
-    pub known_files: Vec<String>
+    pub known_extensions: HashSet<String>
 }
 
 impl Pony {
+    ///Try to perform a get request, if path is not found in
+    /// this instance's gets HashMap and static files are enabled
+    /// it will attempt to find a static file.
+    /// note this will attempt to find index.html if no file extention
+    /// exists on request
     fn get(&self, req: Request) -> super::HyperResult {
         match self.gets.get(req.path()) {
             Some(cb) => {
@@ -39,7 +44,8 @@ impl Pony {
             },
         }
     }
-    
+    ///Fallback when any get request's path doesn't exist
+    /// in this instance's gets HashMap
     fn static_file(&self, path: &str) -> super::HyperResult {
         let mut incoming = String::from(path);
         if incoming.ends_with('/') {
@@ -77,15 +83,15 @@ impl Pony {
             self.not_found()
         }
     }
-
+    ///Check for a path's extention to be in our list of
+    /// known extensions
     fn check_for_known_ext(&self, path: &str) -> bool {
         if path.ends_with("/") {
             return false;
         }
-        for ext in &self.known_files {
-            if path.ends_with(ext) {
-                return true;
-            }
+        let ext = path.split('.').last().expect("failed to get last item in path");
+        if self.known_extensions.contains(ext) {
+
         }
         false
     }
@@ -96,7 +102,7 @@ impl Service for Pony {
     type Response = Response;
     type Error = Error;
     type Future = super::HyperResult;
-
+    ///This is used by hyper to respond to any requests
     fn call(&self, req: Request) -> Self::Future {
         println!("{:?}: {:?}", req.method(), req.path());
         match req.method() {
@@ -129,6 +135,8 @@ impl Service for Pony {
 }
 
 impl Pony {
+    ///This will return the default 404 text or
+    /// a custom 404 .html file if one was provided
     fn not_found(&self) -> super::HyperResult {
         if self.custom_not_found {
             let path = PathBuf::from(&self.not_found_path);
@@ -156,7 +164,7 @@ impl Pony {
             Pony::default_not_found()
         }
     }
-
+    ///The default 404
     fn default_not_found() -> super::HyperResult {
         Box::new(
             ok(
@@ -169,8 +177,5 @@ impl Pony {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+    //TODO: add tests here?
 }

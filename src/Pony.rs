@@ -90,10 +90,7 @@ impl Pony {
             return false;
         }
         let ext = path.split('.').last().expect("failed to get last item in path");
-        if self.known_extensions.contains(ext) {
-
-        }
-        false
+        self.known_extensions.contains(ext)
     }
 }
 

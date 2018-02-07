@@ -59,19 +59,15 @@ impl Pony {
         }
         let static_path = self.static_path.clone() + &incoming;
         let pb = PathBuf::from(static_path);
-        println!("path: {:?}", &pb);
         let file = if let Ok(f) = File::open(pb) {
-            println!("File opened successfully");
             f
         } else {
-            println!("File failed to open");
             return self.not_found()
         };
         
         let mut reader = BufReader::new(file);
         let mut contents: Vec<u8> = vec!();
         if let Ok(_) = reader.read_to_end(&mut contents) {
-            println!("File successfully read");
             Box::new(
                 ok(
                     Response::new()
@@ -79,7 +75,6 @@ impl Pony {
                 )
             )
         } else {
-            println!("Failed to read file as bytes");
             self.not_found()
         }
     }
@@ -101,7 +96,6 @@ impl Service for Pony {
     type Future = super::HyperResult;
     ///This is used by hyper to respond to any requests
     fn call(&self, req: Request) -> Self::Future {
-        println!("{:?}: {:?}", req.method(), req.path());
         match req.method() {
             &Get => {
                 self.get(req)
@@ -145,7 +139,6 @@ impl Pony {
             let mut reader = BufReader::new(file);
             let mut bytes: Vec<u8> = vec!();
             if let Ok(size) = reader.read_to_end(&mut bytes) {
-                println!("read file to end");
                 Box::new(
                     ok(
                         Response::new()

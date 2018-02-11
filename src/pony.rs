@@ -36,7 +36,6 @@ impl Pony {
             },
             None => {
                 if self.static_enabled {
-                    println!("using static and no routes match, checking for fallback");
                     self.static_file(req.path())
                 } else {
                     self.not_found()

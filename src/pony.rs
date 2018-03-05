@@ -20,7 +20,9 @@ pub struct Pony {
     pub static_enabled: bool,
     pub not_found_path: String,
     pub custom_not_found: bool,
-    pub known_extensions: HashSet<String>
+    pub known_extensions: HashSet<String>,
+    pub static_logging: bool,
+    pub use_gzip: bool
 }
 
 impl Pony {
@@ -36,6 +38,9 @@ impl Pony {
             },
             None => {
                 if self.static_enabled {
+                    if self.static_logging {
+                        println!("GET: {:?}", req.path());
+                    }
                     self.static_file(req.path())
                 } else {
                     self.not_found()
@@ -52,29 +57,46 @@ impl Pony {
         } else if !self.check_for_known_ext(&incoming) {
             incoming += "/index.html";
         }
-        
+
         if self.static_path.ends_with('/') && incoming.starts_with('/') {
             incoming.remove(0);
         }
         let static_path = self.static_path.clone() + &incoming;
-        let pb = PathBuf::from(static_path);
-        let file = if let Ok(f) = File::open(pb) {
+        let contents = if self.use_gzip {
+            match Self::read_file(PathBuf::from(static_path.clone() + ".gz")) {
+                Ok(content) => Ok(content),
+                Err(_) => Self::read_file(PathBuf::from(static_path))
+            }
+        } else {
+            Self::read_file(PathBuf::from(static_path))
+        };
+
+        match contents {
+            Ok(c) => {
+                println!("{:?}", path);
+                Box::new(
+                    ok(
+                        Response::new()
+                            .with_body(c)
+                    )
+                )
+            },
+            Err(_) => self.not_found()
+        }
+    }
+    //attempt to read a file
+    fn read_file(path: PathBuf) -> Result<Vec<u8>, String> {
+        let file = if let Ok(f) = File::open(path) {
             f
         } else {
-            return self.not_found()
+            return Err(String::from("File not found"))
         };
-        
         let mut reader = BufReader::new(file);
         let mut contents: Vec<u8> = vec!();
         if let Ok(_) = reader.read_to_end(&mut contents) {
-            Box::new(
-                ok(
-                    Response::new()
-                        .with_body(contents)
-                )
-            )
+            Ok(contents)
         } else {
-            self.not_found()
+            return Err(String::from("File unreadable"))
         }
     }
     ///Check for a path's extention to be in our list of
@@ -166,5 +188,54 @@ impl Pony {
 
 #[cfg(test)]
 mod tests {
-    //TODO: add tests here?
+    // use super::*;
+    // use super::super::pony_builder::PonyBuilder;
+    // use super::super::HyperResult;
+    // use hyper::server::Request;
+    // use hyper::{Method, Uri};
+    // use std::str::FromStr;
+    // use futures::future::ok;
+    // use std::boxed::Box;
+    // use std::ops::Deref;
+    // #[test]
+    // fn route_test() {
+    //     let p = PonyBuilder::new()
+    //                         .get("/get", route)
+    //                         .post("/post", route)
+    //                         .put("/put", route)
+    //                         .delete("/delete", route)
+    //                         .done();
+    //     let get = Request::new(Method::Get, Uri::from_str("/get").unwrap());
+    //     let g = p.call(get).then(|r| {
+    //         r
+    //     });
+
+    //     // let put = Request::new(Method::Put, Uri::from_str("/put").body());
+    //     // assert!(p.call(put).body() == response(&Method::Put).body());
+    //     // let post = Request::new(Method::Post, Uri::from_str("/post"));
+    //     // assert!(p.call(post).body() == response(&Method::Post).body());
+    //     // let delete = Request::new(Method::Delete, Uri::from_str("/delete"));
+    //     // assert!(p.call(delete).body() == response(&Method::Delete).body());
+    // }
+
+    // fn route(req: Request) -> HyperResult {
+    //     response(req.method())
+    // }
+
+    // fn response(method: &Method) -> HyperResult {
+    //     let body = match method {
+    //         &Method::Get => "GET",
+    //         &Method::Put => "PUT",
+    //         &Method::Post => "POST",
+    //         &Method::Delete => "DELETE",
+    //         _ => "UNKNOWN"
+    //     };
+    //     Box::new(ok(Response::new()
+    //                 .with_body(body)))
+    // }
+
+    // #[test]
+    // fn static_test() {
+
+    // }
 }

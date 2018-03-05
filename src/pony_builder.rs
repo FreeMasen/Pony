@@ -16,50 +16,47 @@ pub struct PonyBuilder {
     deletes: HashMap<String, Callback>,
     static_path: String,
     static_enabled: bool,
+    static_logging_enabled: bool,
+    static_gzip_enabled: bool,
     not_found_path: String,
     custom_not_found: bool,
     known_extensions: HashSet<String>,
-    custom_know_extensions: bool,
 }
 
 impl PonyBuilder {
     ///Create a new (default) builder
     pub fn new() -> PonyBuilder {
-        PonyBuilder {
+        Self {
             gets: HashMap::new(),
             posts: HashMap::new(),
             puts: HashMap::new(),
             deletes: HashMap::new(),
             static_path: String::new(),
             static_enabled: false,
+            static_logging_enabled: false,
+            static_gzip_enabled: false,
             not_found_path: String::new(),
             custom_not_found: false,
-            known_extensions: HashSet::new(),
-            custom_know_extensions: false,
+            known_extensions: HashSet::from_iter(
+                                        vec![
+                                            String::from("html"),
+                                            String::from("js"),
+                                            String::from("css"),
+                                            String::from("ico"),
+                                            String::from("jpg"),
+                                            String::from("png"),
+                                            String::from("woff2"),
+                                            String::from("ttf"),
+                                            String::from("txt"),
+                                            String::from("xml"),
+                                            String::from("rss"),
+                                            String::from("svg"),
+                                            String::from("txt"),
+                                            String::from("gif"),
+                                            String::from("map"),
+                                        ].into_iter()),
         }
     }
-    ///The known extensions if none are provided by the user
-    fn default_known_extentions() -> HashSet<String> {
-        HashSet::from_iter(
-        vec![
-            String::from("html"),
-            String::from("js"),
-            String::from("css"),
-            String::from("ico"),
-            String::from("jpg"),
-            String::from("png"),
-            String::from("woff2"),
-            String::from("ttf"),
-            String::from("txt"),
-            String::from("xml"),
-            String::from("rss"),
-            String::from("svg"),
-            String::from("txt"),
-            String::from("gif"),
-            String::from("map"),
-        ].into_iter())
-    }
-
 }
 
 impl PonyBuilder {
@@ -84,7 +81,7 @@ impl PonyBuilder {
         self
     }
     ///Serve static files
-    /// path is the base path to search
+    ///path is the base path to search
     pub fn use_static(&mut self, path: &str) -> &mut PonyBuilder {
         let as_buf = PathBuf::from(&path);
         if !as_buf.exists() {
@@ -95,6 +92,18 @@ impl PonyBuilder {
         }
         self.static_path = path.to_string();
         self.static_enabled = true;
+        self
+    }
+    ///turns on logging for attempts to find static files
+    ///println!(":?}", ) will be executed for each static fallback
+    pub fn use_static_logging(&mut self) -> &mut Self {
+        self.static_logging_enabled = true;
+        self
+    }
+    ///turns on serching for .gz files as part of the fallback
+    ///when no routes are found
+    pub fn use_static_gzip(&mut self) -> &mut Self {
+        self.static_gzip_enabled = true;
         self
     }
     ///provide a custom not found html page
@@ -117,8 +126,35 @@ impl PonyBuilder {
     /// to a specific set of file types
     pub fn set_know_extensions(&mut self, list: &[&str]) -> &mut Self {
         self.known_extensions = HashSet::from_iter(list.into_iter().map(|e| e.to_string()));
-        self.custom_know_extensions = true;
         self
+    }
+    ///Add a new ext to the known extension list
+    pub fn add_known_extension(&mut self, exts: &[&str]) -> &mut Self {
+        self.known_extensions.extend(exts.into_iter().map(|e| e.to_string()));
+        self
+    }
+    ///Remove an ext from the known extension list
+    pub fn remove_known_extension(&mut self, exts: &[&str]) -> &mut Self {
+        for ext in exts.into_iter() {
+            self.known_extensions.remove(*ext);
+        }
+        self
+    }
+
+    pub fn done(&self) -> Pony {
+        Pony {
+            gets: self.gets.clone(),
+            posts: self.posts.clone(),
+            puts: self.puts.clone(),
+            deletes: self.deletes.clone(),
+            static_path: self.static_path.clone(),
+            static_enabled: self.static_enabled == true,
+            static_logging: self.static_logging_enabled,
+            not_found_path: self.not_found_path.clone(),
+            custom_not_found: self.custom_not_found == true,
+            known_extensions: self.known_extensions.clone(),
+            use_gzip: self.static_gzip_enabled == true,
+        }
     }
 }
 
@@ -129,22 +165,7 @@ impl NewService for PonyBuilder {
     type Instance = Pony;
     ///Used by hyper to create a new instance of this service
     fn new_service(&self) -> Result<Self::Instance, io::Error> {
-        let known_files = if !self.custom_know_extensions {
-            PonyBuilder::default_known_extentions()
-        } else {
-            self.known_extensions.clone()
-        };
-        Ok(Pony {
-            gets: self.gets.clone(),
-            posts: self.posts.clone(),
-            puts: self.puts.clone(),
-            deletes: self.deletes.clone(),
-            static_path: self.static_path.clone(),
-            static_enabled: self.static_enabled == true,
-            not_found_path: self.not_found_path.clone(),
-            custom_not_found: self.custom_not_found == true,
-            known_extensions: known_files,
-        })
+        Ok(self.done())
     }
 }
 
@@ -244,6 +265,18 @@ mod tests {
         ];
         pb.set_know_extensions(&exts);
         assert!(pb.known_extensions.len() == exts.len(), "Extention list/set length does not match");
+    }
+    #[test]
+    fn add_ext() {
+        let mut pb = super::PonyBuilder::new();
+        pb.add_known_extension(&["exe"]);
+        assert!(pb.known_extensions.contains("exe"));
+    }
+    #[test]
+    fn remove_ext() {
+        let mut pb = super::PonyBuilder::new();
+        pb.remove_known_extension(&["html"]);
+        assert!(!pb.known_extensions.contains("html"));
     }
     #[test]
     fn chain_test() {

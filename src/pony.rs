@@ -193,54 +193,104 @@ impl Pony {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    // use super::super::pony_builder::PonyBuilder;
-    // use super::super::HyperResult;
-    // use hyper::server::Request;
-    // use hyper::{Method, Uri};
-    // use std::str::FromStr;
-    // use futures::future::ok;
-    // use std::boxed::Box;
-    // use std::ops::Deref;
-    // #[test]
-    // fn route_test() {
-    //     let p = PonyBuilder::new()
-    //                         .get("/get", route)
-    //                         .post("/post", route)
-    //                         .put("/put", route)
-    //                         .delete("/delete", route)
-    //                         .done();
-    //     let get = Request::new(Method::Get, Uri::from_str("/get").unwrap());
-    //     let g = p.call(get).then(|r| {
-    //         r
-    //     });
+    use super::*;
+    use super::super::pony_builder::PonyBuilder;
+    use super::super::HyperResult;
+    use hyper::server::Request;
+    use hyper::{Method, Uri};
+    use std::str::FromStr;
+    use futures::future::ok;
+    use std::boxed::Box;
+    use futures::{Future, Stream};
 
-    //     // let put = Request::new(Method::Put, Uri::from_str("/put").body());
-    //     // assert!(p.call(put).body() == response(&Method::Put).body());
-    //     // let post = Request::new(Method::Post, Uri::from_str("/post"));
-    //     // assert!(p.call(post).body() == response(&Method::Post).body());
-    //     // let delete = Request::new(Method::Delete, Uri::from_str("/delete"));
-    //     // assert!(p.call(delete).body() == response(&Method::Delete).body());
-    // }
+    fn route_test_boiler(method: Method, route: &str) -> String {
+        let mut pb = PonyBuilder::new();
+        pb.get("/get", response)
+            .post("/post", response)
+            .put("/put", response)
+            .delete("/delete", response)
+            .use_static("examples/public");   
+        let p = pb.done();
+        let req = Request::new(method, Uri::from_str(route).unwrap());
+        p.call(req).then(|r| {
+            match r {
+                Ok(res) => res.body().concat2().map(|b| String::from_utf8(b.to_vec())),
+                Err(_) => panic!("Req is not OK"),
+            }
+        }).wait().unwrap().unwrap()
+    }
+    #[test]
+    fn get_test() {
+        let g = route_test_boiler(Method::Get, "/get");
+        assert!(g == "GET");   
+    }
 
-    // fn route(req: Request) -> HyperResult {
-    //     response(req.method())
-    // }
+    #[test]
+    fn put_test() {
+        let p = route_test_boiler(Method::Put, "/put");
+        assert!(p == "PUT");
+    }
+    #[test]
+    fn post_test() {
+        let o = route_test_boiler(Method::Post, "/post");
+        
+        assert!(o == "POST");
+    }
+    #[test]
+    fn delete_test() {
+        let d = route_test_boiler(Method::Delete, "/delete");
+        assert!(d == "DELETE");
+    }
 
-    // fn response(method: &Method) -> HyperResult {
-    //     let body = match method {
-    //         &Method::Get => "GET",
-    //         &Method::Put => "PUT",
-    //         &Method::Post => "POST",
-    //         &Method::Delete => "DELETE",
-    //         _ => "UNKNOWN"
-    //     };
-    //     Box::new(ok(Response::new()
-    //                 .with_body(body)))
-    // }
+    fn response(req: Request) -> HyperResult {
+        let method = req.method();
+        let body = match method {
+            &Method::Get => "GET",
+            &Method::Put => "PUT",
+            &Method::Post => "POST",
+            &Method::Delete => "DELETE",
+            _ => "UNKNOWN"
+        };
+        Box::new(ok(Response::new()
+                    .with_body(body)))
+    }
 
-    // #[test]
-    // fn static_test() {
+    #[test]
+    fn static_test() {
+        let mut body = File::open("examples/public/index.html").unwrap();
+        let mut content = String::new();
+        body.read_to_string(&mut content).unwrap();
+        let c = route_test_boiler(Method::Get, "/");
+        assert!(c == content);
+    }
 
-    // }
+    #[test]
+    fn gzip_static_test() {
+        let mut file = File::open("examples/public/index.html.gz").unwrap();
+        let mut buf: Vec<u8> = vec!();
+        file.read_to_end(&mut buf).unwrap();
+        let mut pb = PonyBuilder::new();
+        pb.use_static("examples/public");
+        pb.use_static_gzip();
+        let p = pb.done();
+        let c: Vec<u8> =  p.call(Request::new(Method::Get, Uri::from_str("/").unwrap())).then(|r| {
+            r.unwrap().body().concat2().map(|c| c.to_vec()).wait()
+        }).wait().unwrap();
+        assert!(c == buf);
+    }
+
+    #[test]
+    fn four_oh_four() {
+        let mut file = File::open("examples/public/404.html").unwrap();
+        let mut buf = String::new();
+        file.read_to_string(&mut buf).unwrap();
+        
+        let mut pb = PonyBuilder::new();
+        pb.use_not_found("examples/public/404.html");
+        let p = pb.done();
+        let c: String = p.call(Request::new(Method::Get, Uri::from_str("/junk").unwrap())).then(|r| {
+            r.unwrap().body().concat2().map(|c| String::from_utf8(c.to_vec()).unwrap()).wait()
+        }).wait().unwrap();
+        assert!(c == buf);
+    }
 }

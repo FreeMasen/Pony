@@ -7,7 +7,7 @@ use futures::future::ok;
 
 use hyper::{Get, Post, Put, Delete, StatusCode, Error};
 use hyper::server::{Service, Request, Response};
-use hyper::header::{ContentLength};
+use hyper::header::{ContentLength, ContentEncoding, Encoding, Headers,};
 
 use super::Callback;
 ///A set of hyper http settings
@@ -62,9 +62,13 @@ impl Pony {
             incoming.remove(0);
         }
         let static_path = self.static_path.clone() + &incoming;
+        let mut headers = Headers::new();
         let contents = if self.use_gzip {
             match Self::read_file(PathBuf::from(static_path.clone() + ".gz")) {
-                Ok(content) => Ok(content),
+                Ok(content) => {
+                    headers.set(ContentEncoding(vec![Encoding::Gzip]));
+                    Ok(content)
+                },
                 Err(_) => Self::read_file(PathBuf::from(static_path))
             }
         } else {
@@ -73,10 +77,11 @@ impl Pony {
 
         match contents {
             Ok(c) => {
-                println!("{:?}", path);
+                headers.set(ContentLength(c.len() as u64));
                 Box::new(
                     ok(
                         Response::new()
+                            .with_headers(headers)
                             .with_body(c)
                     )
                 )

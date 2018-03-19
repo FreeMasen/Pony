@@ -1,0 +1,8 @@
+[package]
+name = "pony_test"
+version = "0.1.0"
+authors = ["rmasen"]
+
+[dependencies]
+pony = {path = "../"}
+clap = "*"

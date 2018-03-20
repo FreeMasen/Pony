@@ -1,7 +1,6 @@
 pub extern crate hyper;
 pub extern crate futures;
-// pub use hyper;
-// pub use futures;
+extern crate percent_encoding;
 use futures::future::Future;
 use hyper::server::{Request, Response};
 use hyper::Error;

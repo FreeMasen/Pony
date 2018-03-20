@@ -9,6 +9,8 @@ use hyper::{Get, Post, Put, Delete, StatusCode, Error};
 use hyper::server::{Service, Request, Response};
 use hyper::header::{ContentLength, ContentEncoding, Encoding, Headers,};
 
+use percent_encoding::{percent_decode};
+
 use super::Callback;
 ///A set of hyper http settings
 pub struct Pony {
@@ -38,10 +40,15 @@ impl Pony {
             },
             None => {
                 if self.static_enabled {
+                    let path = if let Ok(p) = percent_decode(req.path().as_bytes()).decode_utf8() {
+                        p
+                    } else {
+                        return self.not_found()
+                    };
                     if self.static_logging {
-                        println!("GET: {:?}", req.path());
+                        println!("GET: {:?}", &path);
                     }
-                    self.static_file(req.path())
+                    self.static_file(&path)
                 } else {
                     self.not_found()
                 }

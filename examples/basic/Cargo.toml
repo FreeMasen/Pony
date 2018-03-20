@@ -1,0 +1,11 @@
+[package]
+name = "pony_basic_example"
+version = "0.0.1"
+authors = ["FreeMasen"]
+description = ""
+license = "MIT"
+
+[dependencies]
+hyper = "^0.11"
+futures = "^0.1"
+pony = { path = "../../"}

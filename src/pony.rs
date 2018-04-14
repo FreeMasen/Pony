@@ -70,6 +70,9 @@ impl Pony {
         }
         let static_path = self.static_path.clone() + &incoming;
         let mut headers = Headers::new();
+        if path.ends_with(".wasm") {
+            headers.append_raw("Content-Type", "application/wasm");
+        }
         let contents = if self.use_gzip {
             match Self::read_file(PathBuf::from(static_path.clone() + ".gz")) {
                 Ok(content) => {
@@ -120,6 +123,8 @@ impl Pony {
         let ext = path.split('.').last().expect("failed to get last item in path");
         self.known_extensions.contains(ext)
     }
+
+
 }
 
 impl Service for Pony {

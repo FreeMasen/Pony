@@ -121,16 +121,13 @@ impl Pony {
                         }
                     },
                     ETag::Sha1 => {
-                        println!("computing the sha1 for this file");
                         let mut sh = Sha1::default();
                         sh.input(&c);
                         let res = sh.result();
-                        println!("sha1: {:?}", res);
                         let mut etag = String::new();
                         for i in res.into_iter() {
                             etag.push(i as char);
                         }
-                        println!("computed the etag for this file {}", etag);
                         headers.append_raw("ETag", etag);
                     },
                     _ => (),

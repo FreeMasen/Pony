@@ -11,6 +11,8 @@ use hyper::header::{ContentLength, ContentEncoding, Encoding, Headers,};
 
 use percent_encoding::{percent_decode};
 
+use sha1::{Sha1, Digest};
+
 use super::Callback;
 ///A set of hyper http settings
 pub struct Pony {
@@ -24,8 +26,23 @@ pub struct Pony {
     pub custom_not_found: bool,
     pub known_extensions: HashSet<String>,
     pub static_logging: bool,
-    pub use_gzip: bool
+    pub use_gzip: bool,
+    pub etag: ETag,
 }
+#[derive(Clone)]
+pub enum ETag {
+    None,
+    LastModified,
+    Sha1,
+}
+
+impl Default for ETag {
+    fn default() -> Self {
+        ETag::None
+    }
+}
+
+impl Copy for ETag {}
 
 impl Pony {
     ///Try to perform a get request, if path is not found in
@@ -68,25 +85,50 @@ impl Pony {
         if self.static_path.ends_with('/') && incoming.starts_with('/') {
             incoming.remove(0);
         }
-        let static_path = self.static_path.clone() + &incoming;
+        let static_path = PathBuf::from(format!("{}{}{}", self.static_path, incoming, if self.use_gzip {
+            ".gz"
+        } else {
+            ""
+        }));
         let mut headers = Headers::new();
         if path.ends_with(".wasm") {
             headers.append_raw("Content-Type", "application/wasm");
         }
+
+
         let contents = if self.use_gzip {
-            match Self::read_file(PathBuf::from(static_path.clone() + ".gz")) {
+            match Self::read_file(&static_path) {
                 Ok(content) => {
                     headers.set(ContentEncoding(vec![Encoding::Gzip]));
                     Ok(content)
                 },
-                Err(_) => Self::read_file(PathBuf::from(static_path))
+                Err(_) => Self::read_file(&static_path)
             }
         } else {
-            Self::read_file(PathBuf::from(static_path))
+            Self::read_file(&static_path)
         };
 
         match contents {
             Ok(c) => {
+                match self.etag {
+                    ETag::LastModified => {
+                        if let Ok(md) = ::std::fs::metadata(path){
+                            if let Ok(t) = md.modified() {
+                                if let Ok(d) = t.duration_since(::std::time::SystemTime::UNIX_EPOCH) {
+                                    headers.append_raw("ETag", format!("{}", (d.as_secs() * 1000) + d.subsec_millis() as u64));
+                                }
+                            }
+                        }
+                    },
+                    ETag::Sha1 => {
+                        let mut sh = Sha1::default();
+                        sh.input(&c);
+                        if let Ok(etag) = String::from_utf8(sh.result().to_vec()) {
+                            headers.append_raw("ETag", etag)
+                        }
+                    },
+                    _ => (),
+                }
                 headers.set(ContentLength(c.len() as u64));
                 Box::new(
                     ok(
@@ -99,8 +141,9 @@ impl Pony {
             Err(_) => self.not_found()
         }
     }
+
     //attempt to read a file
-    fn read_file(path: PathBuf) -> Result<Vec<u8>, String> {
+    fn read_file(path: &PathBuf) -> Result<Vec<u8>, String> {
         let file = if let Ok(f) = File::open(path) {
             f
         } else {

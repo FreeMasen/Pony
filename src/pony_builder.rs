@@ -4,7 +4,7 @@ use std::path::{PathBuf};
 use hyper::server::NewService;
 use hyper::{Request, Response, Error};
 
-use super::pony::{Pony};
+use super::pony::{Pony, ETag};
 use super::Callback;
 use std::iter::FromIterator;
 
@@ -21,6 +21,7 @@ pub struct PonyBuilder {
     not_found_path: String,
     custom_not_found: bool,
     known_extensions: HashSet<String>,
+    etag: ETag,
 }
 
 impl PonyBuilder {
@@ -55,6 +56,7 @@ impl PonyBuilder {
                                             String::from("gif"),
                                             String::from("map"),
                                         ].into_iter()),
+            etag: ETag::default()
         }
     }
 }
@@ -140,6 +142,12 @@ impl PonyBuilder {
         }
         self
     }
+    ///sets the option for inserting an etag header
+    ///defaults to `ETag::None`
+    pub fn use_etag(&mut self, etag: ETag) -> &mut Self {
+        self.etag = etag;
+        self
+    }
 
     pub fn done(&self) -> Pony {
         Pony {
@@ -154,6 +162,7 @@ impl PonyBuilder {
             custom_not_found: self.custom_not_found == true,
             known_extensions: self.known_extensions.clone(),
             use_gzip: self.static_gzip_enabled == true,
+            etag: self.etag,
         }
     }
 }
